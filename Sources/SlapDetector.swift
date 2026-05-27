@@ -450,6 +450,9 @@ class SlapDetector {
             severity = .microVibration
         }
 
+        // Log everything that passes the detector vote so we can calibrate thresholds
+        log("[DETECT] amp=\(String(format: "%.4f", amplitude))g detectors=\(sources.sorted().joined(separator: ",")) severity=\(severity.rawValue) minAmp=\(config.minAmplitude) minDet=\(config.minDetectorCount)")
+
         // Only trigger on actual slaps (not micro vibrations)
         guard amplitude >= config.minAmplitude else { return }
         guard severity == .majorShock || severity == .mediumShock || severity == .microShock else { return }

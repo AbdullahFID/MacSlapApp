@@ -22,6 +22,12 @@ class AccelerometerReader {
     private var isListening = false
     private var decimationCounter = 0
 
+    // Peak-hold over decimation window: captures brief slap spikes that
+    // fall between sampled frames at the decimated rate.
+    private var peakX: Double = 0
+    private var peakY: Double = 0
+    private var peakZ: Double = 0
+
     private let decimationFactor = 8      // 1kHz -> ~125Hz
     private let accelScale: Double = 65536.0  // Q16 fixed-point
     private let reportBufferSize = 256
@@ -33,8 +39,29 @@ class AccelerometerReader {
     /// Called with (x, y, z) accelerometer values in g
     var onSample: ((_ x: Double, _ y: Double, _ z: Double) -> Void)?
 
+    /// Wake the SPU driver before opening any devices.
+    /// spank uses this approach: set properties on AppleSPUHIDDriver (not the HIDDevice)
+    /// so the sensor is powered up before we try to read from it.
+    private func wakeSPUDrivers() {
+        guard let matching = IOServiceMatching("AppleSPUHIDDriver") else { return }
+        var it: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &it) == KERN_SUCCESS else { return }
+        defer { IOObjectRelease(it) }
+        var svc = IOIteratorNext(it)
+        while svc != 0 {
+            IORegistryEntrySetCFProperty(svc, "SensorPropertyReportingState" as CFString, 1 as CFNumber)
+            IORegistryEntrySetCFProperty(svc, "SensorPropertyPowerState" as CFString, 1 as CFNumber)
+            IORegistryEntrySetCFProperty(svc, "ReportInterval" as CFString, 1000 as CFNumber)
+            IOObjectRelease(svc)
+            svc = IOIteratorNext(it)
+        }
+    }
+
     func start() -> Bool {
         guard !isListening else { return true }
+
+        // Wake the driver first — must happen before opening the HIDDevice
+        wakeSPUDrivers()
 
         // Step 1: Find AppleSPUHIDDevice services
         var iterator: io_iterator_t = 0
@@ -90,12 +117,7 @@ class AccelerometerReader {
 
         self.hidDevice = device
 
-        // Step 5: Wake the sensor
-        IOHIDDeviceSetProperty(device, "ReportInterval" as CFString, 1000 as CFNumber)
-        IOHIDDeviceSetProperty(device, "SensorPropertyReportingState" as CFString, 1 as CFNumber)
-        IOHIDDeviceSetProperty(device, "SensorPropertyPowerState" as CFString, 1 as CFNumber)
-
-        // Step 6: Allocate report buffer and register callback
+        // Step 5: Allocate report buffer and register callback
         reportBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: reportBufferSize)
         let context = Unmanaged.passUnretained(self).toOpaque()
 
@@ -111,8 +133,20 @@ class AccelerometerReader {
             context
         )
 
-        // Step 7: Schedule on run loop
-        IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        // Step 6: Schedule on a dedicated background run loop thread (macOS 26: main RunLoop
+        // no longer delivers IOHIDDevice reports reliably — move to background thread)
+        let thread = Thread {
+            guard let rl = CFRunLoopGetCurrent() else { return }
+            IOHIDDeviceScheduleWithRunLoop(device, rl, CFRunLoopMode.defaultMode.rawValue)
+            CFRunLoopRun()
+        }
+        thread.name = "com.slapmacpro.accel"
+        thread.start()
+
+        // Step 7: Wake the sensor (after scheduling so properties take effect)
+        IOHIDDeviceSetProperty(device, "ReportInterval" as CFString, 1000 as CFNumber)
+        IOHIDDeviceSetProperty(device, "SensorPropertyReportingState" as CFString, 1 as CFNumber)
+        IOHIDDeviceSetProperty(device, "SensorPropertyPowerState" as CFString, 1 as CFNumber)
 
         isListening = true
         log("Accelerometer started (~\(1000/decimationFactor)Hz after decimation)")
@@ -134,7 +168,17 @@ class AccelerometerReader {
 
     private func handleReport(report: UnsafePointer<UInt8>, length: Int) {
         decimationCounter += 1
-        guard decimationCounter % decimationFactor == 0 else { return }
+
+        // M5 DIAGNOSTIC: log every 125th report (once per second) so we can see raw data
+        if decimationCounter % 125 == 0 {
+            let data = UnsafeBufferPointer(start: report, count: length)
+            let hex = (0..<min(length, 22)).map { String(format: "%02x", data[$0]) }.joined(separator: " ")
+            let x32 = length >= 18 ? readInt32LE(data, offset: 6) : 0
+            let y32 = length >= 18 ? readInt32LE(data, offset: 10) : 0
+            let z32 = length >= 18 ? readInt32LE(data, offset: 14) : 0
+            let mag32 = sqrt(pow(Double(x32)/accelScale, 2) + pow(Double(y32)/accelScale, 2) + pow(Double(z32)/accelScale, 2))
+            log("[DIAG] len=\(length) hex=[\(hex)] int32-mag=\(String(format: "%.4f", mag32))g (raw x=\(x32) y=\(y32) z=\(z32))")
+        }
 
         let data = UnsafeBufferPointer(start: report, count: length)
 
@@ -150,12 +194,24 @@ class AccelerometerReader {
 
             let mag = sqrt(gx * gx + gy * gy + gz * gz)
             if mag > 0.3 && mag < 10.0 {
-                onSample?(gx, gy, gz)
+                // Track peak magnitude in each decimation window.
+                // A slap is a brief high-amplitude spike — without this, 7 of
+                // every 8 samples are discarded and the peak is usually missed.
+                if abs(gx) > abs(peakX) { peakX = gx }
+                if abs(gy) > abs(peakY) { peakY = gy }
+                if abs(gz) > abs(peakZ) { peakZ = gz }
+
+                if decimationCounter % decimationFactor == 0 {
+                    let (px, py, pz) = (peakX, peakY, peakZ)
+                    peakX = gx; peakY = gy; peakZ = gz  // reset to current
+                    onSample?(px, py, pz)
+                }
                 return
             }
         }
 
-        // Fallback: int16 format
+        // Fallback: int16 format (no peak-hold — less critical path)
+        guard decimationCounter % decimationFactor == 0 else { return }
         guard length >= 6 else { return }
         for offset in 0..<min(4, length - 5) {
             let rawX = Int16(bitPattern: UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8))
