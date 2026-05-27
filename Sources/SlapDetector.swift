@@ -29,6 +29,9 @@ struct DetectorConfig {
     var warmupSamples: Int = 50
     var minCooldown: TimeInterval = 0.01  // 10ms between events (like spank)
     var minAmplitude: Double = 0.05       // minimum g-force to trigger
+    var minDetectorCount: Int = 1         // how many detectors must agree
+    var typingGuardWindow: TimeInterval = 1.5  // suppress if N small events in this window
+    var typingGuardMaxEvents: Int = 0     // 0 = disabled
 }
 
 struct STALTAConfig {
@@ -346,6 +349,7 @@ class SlapDetector {
 
     private var samplesSeen: Int = 0
     private var lastEventTime: Date = .distantPast
+    private var recentSmallEventTimes: [Date] = []  // for typing guard
 
     var onSlap: ((SlapEvent) -> Void)?
 
@@ -384,6 +388,7 @@ class SlapDetector {
             sigmaThreshold: newConfig.peakMADSigmaThreshold
         )
         samplesSeen = 0
+        recentSmallEventTimes.removeAll()
     }
 
     func processSample(x: Double, y: Double, z: Double) {
@@ -411,6 +416,19 @@ class SlapDetector {
         if peakMADDetector.process(magnitude) != nil { sources.insert("PEAK") }
 
         guard !sources.isEmpty else { return }
+
+        // Typing guard: track small sub-threshold events; if there are too many in a
+        // short window it's almost certainly keyboard vibration, not a slap.
+        if config.typingGuardMaxEvents > 0 && magnitude < config.minAmplitude * 2.0 {
+            recentSmallEventTimes.append(now)
+            recentSmallEventTimes = recentSmallEventTimes.filter {
+                now.timeIntervalSince($0) < config.typingGuardWindow
+            }
+            if recentSmallEventTimes.count >= config.typingGuardMaxEvents { return }
+        }
+
+        // Require minimum number of distinct detector types to agree
+        guard sources.count >= config.minDetectorCount else { return }
 
         // Step 3: Classify event severity based on votes + amplitude
         let numSources = sources.count
@@ -444,6 +462,7 @@ class SlapDetector {
         let t = (clamped - minAmp) / (maxAmp - minAmp)
         let intensity = log(1 + t * 99) / log(100)  // logarithmic scaling
 
+        recentSmallEventTimes.removeAll()  // clear typing buffer on confirmed slap
         lastEventTime = now
         let event = SlapEvent(
             magnitude: amplitude,

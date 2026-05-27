@@ -89,7 +89,10 @@ enum SensitivityLevel: Int, CaseIterable {
                 kurtosisThreshold: 10.0,
                 peakMADSigmaThreshold: 3.0,
                 highPassAlpha: 0.95,
-                minAmplitude: 0.10
+                minAmplitude: 0.25,
+                minDetectorCount: 2,
+                typingGuardWindow: 1.5,
+                typingGuardMaxEvents: 5
             )
         case .veryLow:
             return DetectorConfig(
@@ -100,7 +103,10 @@ enum SensitivityLevel: Int, CaseIterable {
                 kurtosisThreshold: 15.0,
                 peakMADSigmaThreshold: 5.0,
                 highPassAlpha: 0.95,
-                minAmplitude: 0.18
+                minAmplitude: 0.45,
+                minDetectorCount: 2,
+                typingGuardWindow: 2.0,
+                typingGuardMaxEvents: 4
             )
         }
     }
