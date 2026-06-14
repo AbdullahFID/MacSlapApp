@@ -151,7 +151,7 @@ class SettingsStore: ObservableObject {
         self.showCountInMenuBar = d.object(forKey: "showCountInMenuBar") as? Bool ?? true
         self.screenFlashEnabled = d.object(forKey: "screenFlashEnabled") as? Bool ?? false
         self.usbMoanerEnabled = d.object(forKey: "usbMoanerEnabled") as? Bool ?? false
-        self.screenShakeEnabled = d.object(forKey: "screenShakeEnabled") as? Bool ?? true
+        self.screenShakeEnabled = d.object(forKey: "screenShakeEnabled") as? Bool ?? false
         self.brightnessFlashEnabled = d.object(forKey: "brightnessFlashEnabled") as? Bool ?? false
         self.hapticFeedbackEnabled = d.object(forKey: "hapticFeedbackEnabled") as? Bool ?? true
         self.shakeIntensity = d.object(forKey: "shakeIntensity") as? Double ?? 0.7

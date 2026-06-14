@@ -107,6 +107,10 @@ final class SlapDetector {
     private var refractoryCount = 0
     private var warmupCount = 0
 
+    // processSample runs on the accelerometer's background thread; updateConfig
+    // is called from the menu (main thread). Guard shared state with a lock.
+    private let lock = NSLock()
+
     var onSlap: ((SlapEvent) -> Void)?
 
     init(config: DetectorConfig) {
@@ -114,12 +118,14 @@ final class SlapDetector {
     }
 
     func updateConfig(_ newConfig: DetectorConfig) {
+        lock.lock(); defer { lock.unlock() }
         config = newConfig
         state = .idle
         refractoryCount = 0
     }
 
     func processSample(x: Double, y: Double, z: Double) {
+        lock.lock(); defer { lock.unlock() }
         // 1) Track gravity, derive linear acceleration + magnitude.
         if !gravInit { gx = x; gy = y; gz = z; gravInit = true }
         let a = config.gravityAlpha

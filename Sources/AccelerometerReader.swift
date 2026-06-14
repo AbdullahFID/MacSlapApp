@@ -22,6 +22,8 @@ class AccelerometerReader {
     private var isListening = false
     private var decimationCounter = 0
     private var acceptedSamples = 0
+    private var hidThread: Thread?
+    private var threadShouldRun = false
 
     private let decimationFactor = 1      // full native rate (~805Hz) for the impact detector
     private let accelScale: Double = 65536.0  // Q16 fixed-point
@@ -102,8 +104,12 @@ class AccelerometerReader {
         // report (open succeeds, but the input-report callback never fires).
         wakeSensorDrivers()
 
-        // Step 6: Allocate report buffer and register callback
-        reportBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: reportBufferSize)
+        // Step 6: Allocate report buffer (once for the reader's lifetime) and
+        // register callback. The buffer is freed in deinit so an in-flight
+        // callback can never reference freed memory.
+        if reportBuffer == nil {
+            reportBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: reportBufferSize)
+        }
         let context = Unmanaged.passUnretained(self).toOpaque()
 
         IOHIDDeviceRegisterInputReportCallback(
@@ -118,25 +124,49 @@ class AccelerometerReader {
             context
         )
 
-        // Step 7: Schedule on run loop
-        IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        // Step 7: Service the HID callback on a DEDICATED background thread's
+        // run loop instead of the main run loop. The main run loop stalls during
+        // menu tracking (it runs in a different mode) and during the screen-shake
+        // effect (which blocks the main thread), which would pause sensor delivery
+        // and can drop fast slaps. A private thread keeps reports flowing at
+        // ~805Hz regardless of UI activity, and keeps that load off the main thread.
+        threadShouldRun = true
+        let thread = Thread { [weak self] in
+            guard let rl = CFRunLoopGetCurrent() else { return }
+            IOHIDDeviceScheduleWithRunLoop(device, rl, CFRunLoopMode.defaultMode.rawValue)
+            while self?.threadShouldRun == true {
+                CFRunLoopRunInMode(.defaultMode, 0.25, true)
+            }
+            // Clean teardown on this thread so no callback fires after close.
+            IOHIDDeviceUnscheduleFromRunLoop(device, rl, CFRunLoopMode.defaultMode.rawValue)
+            IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
+        }
+        thread.name = "com.slapmacpro.accel"
+        thread.stackSize = 512 * 1024
+        hidThread = thread
+        thread.start()
 
         isListening = true
-        log("Accelerometer started (~805Hz full rate)")
+        log("Accelerometer started (~805Hz full rate, dedicated thread)")
         return true
     }
 
     func stop() {
         guard isListening else { return }
-        if let device = hidDevice {
-            IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
-        }
+        isListening = false
+        // The background thread will see this, unschedule, and close the device
+        // (it holds its own strong reference to `device` until then).
+        threadShouldRun = false
+        hidThread = nil
         hidDevice = nil
+    }
+
+    deinit {
+        threadShouldRun = false
         if let buf = reportBuffer {
             buf.deallocate()
             reportBuffer = nil
         }
-        isListening = false
     }
 
     /// Powers on the IMU by setting reporting/power-state properties on every
