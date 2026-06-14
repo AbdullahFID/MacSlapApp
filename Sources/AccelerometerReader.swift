@@ -21,8 +21,9 @@ class AccelerometerReader {
     private var reportBuffer: UnsafeMutablePointer<UInt8>?
     private var isListening = false
     private var decimationCounter = 0
+    private var acceptedSamples = 0
 
-    private let decimationFactor = 8      // 1kHz -> ~125Hz
+    private let decimationFactor = 1      // full native rate (~805Hz) for the impact detector
     private let accelScale: Double = 65536.0  // Q16 fixed-point
     private let reportBufferSize = 256
 
@@ -35,6 +36,10 @@ class AccelerometerReader {
 
     func start() -> Bool {
         guard !isListening else { return true }
+
+        // Step 0: Wake the SPU sensor drivers up front so the IMU is already
+        // streaming by the time we open the device and attach our callback.
+        wakeSensorDrivers()
 
         // Step 1: Find AppleSPUHIDDevice services
         var iterator: io_iterator_t = 0
@@ -90,10 +95,12 @@ class AccelerometerReader {
 
         self.hidDevice = device
 
-        // Step 5: Wake the sensor
-        IOHIDDeviceSetProperty(device, "ReportInterval" as CFString, 1000 as CFNumber)
-        IOHIDDeviceSetProperty(device, "SensorPropertyReportingState" as CFString, 1 as CFNumber)
-        IOHIDDeviceSetProperty(device, "SensorPropertyPowerState" as CFString, 1 as CFNumber)
+        // Step 5: Wake the sensor AGAIN now that the device is open.
+        // CRITICAL: power/reporting state lives on the AppleSPUHIDDriver service,
+        // NOT on the IOHIDDevice object. Setting these via IOHIDDeviceSetProperty
+        // is silently ignored on Apple Silicon and the IMU never streams a single
+        // report (open succeeds, but the input-report callback never fires).
+        wakeSensorDrivers()
 
         // Step 6: Allocate report buffer and register callback
         reportBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: reportBufferSize)
@@ -115,7 +122,7 @@ class AccelerometerReader {
         IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
 
         isListening = true
-        log("Accelerometer started (~\(1000/decimationFactor)Hz after decimation)")
+        log("Accelerometer started (~805Hz full rate)")
         return true
     }
 
@@ -130,6 +137,39 @@ class AccelerometerReader {
             reportBuffer = nil
         }
         isListening = false
+    }
+
+    /// Powers on the IMU by setting reporting/power-state properties on every
+    /// `AppleSPUHIDDriver` service in the IORegistry.
+    ///
+    /// This is THE step that makes the sensor stream. On Apple Silicon the SPU
+    /// driver owns the sensor's power/reporting state; the IOHIDDevice wrapper
+    /// does not. We set:
+    ///   - SensorPropertyReportingState = 1  (start emitting reports)
+    ///   - SensorPropertyPowerState     = 1  (power the sensor on)
+    ///   - ReportInterval = 1000 (µs)        (request ~1kHz; HW clamps to ~800Hz)
+    /// Properties must be CFNumber(SInt32) and set via IORegistryEntrySetCFProperty.
+    private func wakeSensorDrivers() {
+        guard let matching = IOServiceMatching("AppleSPUHIDDriver") else { return }
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else {
+            return
+        }
+        defer { IOObjectRelease(iterator) }
+
+        var service = IOIteratorNext(iterator)
+        while service != 0 {
+            for (key, value) in [("SensorPropertyReportingState", Int32(1)),
+                                 ("SensorPropertyPowerState", Int32(1)),
+                                 ("ReportInterval", Int32(1000))] {
+                var v = value
+                if let num = CFNumberCreate(kCFAllocatorDefault, .sInt32Type, &v) {
+                    IORegistryEntrySetCFProperty(service, key as CFString, num)
+                }
+            }
+            IOObjectRelease(service)
+            service = IOIteratorNext(iterator)
+        }
     }
 
     private func handleReport(report: UnsafePointer<UInt8>, length: Int) {
@@ -149,7 +189,8 @@ class AccelerometerReader {
             let gz = Double(z) / accelScale
 
             let mag = sqrt(gx * gx + gy * gy + gz * gz)
-            if mag > 0.3 && mag < 10.0 {
+            if mag > 0.2 && mag < 25.0 {
+                noteStreaming(mag)
                 onSample?(gx, gy, gz)
                 return
             }
@@ -167,10 +208,22 @@ class AccelerometerReader {
             let gz = Double(rawZ) / 16384.0
 
             let mag = sqrt(gx * gx + gy * gy + gz * gz)
-            if mag > 0.3 && mag < 10.0 {
+            if mag > 0.2 && mag < 25.0 {
+                noteStreaming(mag)
                 onSample?(gx, gy, gz)
                 return
             }
+        }
+    }
+
+    /// Logs the first streamed sample and a sparse keep-alive so /tmp/slapmacpro.log
+    /// positively confirms the IMU is delivering data.
+    private func noteStreaming(_ mag: Double) {
+        acceptedSamples += 1
+        if acceptedSamples == 1 {
+            log("Accelerometer streaming OK — first sample mag=\(String(format: "%.3f", mag))g")
+        } else if acceptedSamples % 48000 == 0 {
+            log("Accelerometer alive: \(acceptedSamples) samples")
         }
     }
 

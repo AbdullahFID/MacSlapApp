@@ -45,63 +45,22 @@ enum SensitivityLevel: Int, CaseIterable {
         }
     }
 
+    /// Thresholds derived from on-device captures: hard typing peaks at
+    /// ~0.12 g with low coincident jerk, so even the most sensitive level
+    /// (amp 0.15 g AND jerk 14 g/s) rejects it with margin, while real slaps
+    /// (≥0.5 g and tens–hundreds g/s of jerk) clear every level.
     var detectorConfig: DetectorConfig {
         switch self {
-        case .veryHigh:
-            return DetectorConfig(
-                staltaFast: STALTAConfig(staN: 3, ltaN: 80, onThreshold: 2.0, offThreshold: 1.2),
-                staltaMedium: STALTAConfig(staN: 10, ltaN: 300, onThreshold: 1.8, offThreshold: 1.1),
-                staltaSlow: STALTAConfig(staN: 30, ltaN: 1000, onThreshold: 1.5, offThreshold: 1.0),
-                cusumK: 0.0003, cusumH: 0.005,
-                kurtosisThreshold: 4.0,
-                peakMADSigmaThreshold: 1.5,
-                highPassAlpha: 0.95,
-                minAmplitude: 0.02
-            )
+        case .veryHigh:   // "Extremely Sensitive" — soft slaps count, typing doesn't
+            return DetectorConfig(ampThreshold: 0.15, jerkThreshold: 14, hardAmpThreshold: 0.45)
         case .high:
-            return DetectorConfig(
-                staltaFast: STALTAConfig(staN: 3, ltaN: 100, onThreshold: 2.5, offThreshold: 1.3),
-                staltaMedium: STALTAConfig(staN: 12, ltaN: 400, onThreshold: 2.0, offThreshold: 1.2),
-                staltaSlow: STALTAConfig(staN: 40, ltaN: 1500, onThreshold: 1.8, offThreshold: 1.1),
-                cusumK: 0.0004, cusumH: 0.008,
-                kurtosisThreshold: 5.0,
-                peakMADSigmaThreshold: 1.8,
-                highPassAlpha: 0.95,
-                minAmplitude: 0.03
-            )
+            return DetectorConfig(ampThreshold: 0.25, jerkThreshold: 20, hardAmpThreshold: 0.60)
         case .medium:
-            return DetectorConfig(
-                staltaFast: STALTAConfig(staN: 3, ltaN: 100, onThreshold: 3.0, offThreshold: 1.5),
-                staltaMedium: STALTAConfig(staN: 15, ltaN: 500, onThreshold: 2.5, offThreshold: 1.3),
-                staltaSlow: STALTAConfig(staN: 50, ltaN: 2000, onThreshold: 2.0, offThreshold: 1.2),
-                cusumK: 0.0005, cusumH: 0.01,
-                kurtosisThreshold: 6.0,
-                peakMADSigmaThreshold: 2.0,
-                highPassAlpha: 0.95,
-                minAmplitude: 0.05
-            )
+            return DetectorConfig(ampThreshold: 0.40, jerkThreshold: 30, hardAmpThreshold: 0.90)
         case .low:
-            return DetectorConfig(
-                staltaFast: STALTAConfig(staN: 3, ltaN: 120, onThreshold: 4.0, offThreshold: 2.0),
-                staltaMedium: STALTAConfig(staN: 20, ltaN: 600, onThreshold: 3.5, offThreshold: 1.8),
-                staltaSlow: STALTAConfig(staN: 60, ltaN: 2500, onThreshold: 3.0, offThreshold: 1.5),
-                cusumK: 0.001, cusumH: 0.02,
-                kurtosisThreshold: 10.0,
-                peakMADSigmaThreshold: 3.0,
-                highPassAlpha: 0.95,
-                minAmplitude: 0.10
-            )
-        case .veryLow:
-            return DetectorConfig(
-                staltaFast: STALTAConfig(staN: 3, ltaN: 150, onThreshold: 5.0, offThreshold: 2.5),
-                staltaMedium: STALTAConfig(staN: 25, ltaN: 800, onThreshold: 4.5, offThreshold: 2.0),
-                staltaSlow: STALTAConfig(staN: 80, ltaN: 3000, onThreshold: 4.0, offThreshold: 1.8),
-                cusumK: 0.002, cusumH: 0.05,
-                kurtosisThreshold: 15.0,
-                peakMADSigmaThreshold: 5.0,
-                highPassAlpha: 0.95,
-                minAmplitude: 0.18
-            )
+            return DetectorConfig(ampThreshold: 0.70, jerkThreshold: 50, hardAmpThreshold: 1.50)
+        case .veryLow:    // "Requires Significant Force" — only firm/hard slaps
+            return DetectorConfig(ampThreshold: 1.10, jerkThreshold: 90, hardAmpThreshold: 2.20)
         }
     }
 }
