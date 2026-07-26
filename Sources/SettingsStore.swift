@@ -1,9 +1,11 @@
 import Foundation
 import Combine
 
+/// Represents the available voice packs for the slap sound effects.
 enum VoicePack: String, CaseIterable {
     case sexy, comboHit, male, fart, gentleman, yamete, goat
 
+    /// Returns the display name for the voice pack.
     var displayName: String {
         switch self {
         case .sexy: return "Sexy"
@@ -16,6 +18,7 @@ enum VoicePack: String, CaseIterable {
         }
     }
 
+    /// Returns the file prefix for the voice pack audio files.
     var filePrefix: String {
         switch self {
         case .comboHit: return "punch"
@@ -23,7 +26,7 @@ enum VoicePack: String, CaseIterable {
         }
     }
 
-    /// Packs that escalate through files with sustained slapping
+    /// Indicates whether the voice pack uses escalation through files with sustained slapping.
     var usesEscalation: Bool {
         switch self {
         case .sexy, .yamete: return true
@@ -32,9 +35,11 @@ enum VoicePack: String, CaseIterable {
     }
 }
 
+/// Defines the sensitivity levels for slap detection.
 enum SensitivityLevel: Int, CaseIterable {
     case veryLow = 0, low, medium, high, veryHigh
 
+    /// Returns the display name for the sensitivity level.
     var displayName: String {
         switch self {
         case .veryLow: return "Requires Significant Force"
@@ -65,6 +70,7 @@ enum SensitivityLevel: Int, CaseIterable {
     }
 }
 
+/// Defines available cooldown options between slaps.
 enum CooldownOption: Double, CaseIterable {
     case none = 0.0
     case fast = 0.35
@@ -72,6 +78,7 @@ enum CooldownOption: Double, CaseIterable {
     case long = 1.0
     case veryLong = 2.0
 
+    /// Returns the display name for the cooldown option.
     var displayName: String {
         switch self {
         case .none: return "None"
@@ -82,9 +89,11 @@ enum CooldownOption: Double, CaseIterable {
         }
     }
 
+    /// Returns the duration in seconds for the cooldown.
     var interval: Double { rawValue }
 }
 
+/// Observable object that stores and manages application settings.
 class SettingsStore: ObservableObject {
     private let defaults = UserDefaults.standard
 
@@ -140,6 +149,7 @@ class SettingsStore: ObservableObject {
         didSet { defaults.set(volume, forKey: "volume") }
     }
 
+    /// Initializes a new SettingsStore, loading values from UserDefaults or using defaults.
     init() {
         let d = UserDefaults.standard
         self.isEnabled = d.object(forKey: "isEnabled") as? Bool ?? true
