@@ -20,11 +20,16 @@ LEGACY_BIN   := $(HOME)/Desktop/slapmac/bin/SlapMacPro
 build:
 	swift build -c release
 
-# Assemble and ad-hoc sign the .app bundle.
+# Assemble and ad-hoc sign the .app bundle. Debug symbols are stripped before
+# signing: their stabs carry absolute build paths (i.e. the builder's username),
+# and the build fails if the home folder path survives anywhere in the binary.
 app: build
 	@rm -rf "$(APP)"
 	@mkdir -p "$(APP)/Contents/MacOS" "$(APP)/Contents/Resources"
 	@cp .build/release/$(APP_NAME) "$(APP)/Contents/MacOS/$(APP_NAME)"
+	@strip -S -x "$(APP)/Contents/MacOS/$(APP_NAME)"
+	@if LC_ALL=C grep -aq "$(HOME)" "$(APP)/Contents/MacOS/$(APP_NAME)"; then \
+		echo "error: binary still contains $(HOME); refusing to package it" >&2; exit 1; fi
 	@sed -e 's/__VERSION__/$(VERSION)/' -e 's/__BUILD__/$(BUILD)/' Resources/Info.plist > "$(APP)/Contents/Info.plist"
 	@cp Resources/AppIcon.icns "$(APP)/Contents/Resources/AppIcon.icns"
 	@printf 'APPL????' > "$(APP)/Contents/PkgInfo"

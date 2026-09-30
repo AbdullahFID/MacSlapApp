@@ -42,9 +42,18 @@ enum AppLog {
         f.timeZone = .current
         return f
     }()
+
+    /// Logs get attached to bug reports, so the home folder (which contains the
+    /// account name) is written as "~".
+    private static let homePath = FileManager.default.homeDirectoryForCurrentUser.path
+
+    fileprivate static func redactingHome(_ message: String) -> String {
+        message.replacingOccurrences(of: homePath, with: "~")
+    }
 }
 
 func log(_ message: String) {
+    let message = AppLog.redactingHome(message)
     AppLog.logger.notice("\(message, privacy: .public)")
     if AppLog.isTerminal {
         fputs("[\(AppInfo.name)] \(message)\n", stderr)
