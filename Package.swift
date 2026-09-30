@@ -1,23 +1,38 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
-    name: "SlapMacClone",
+    name: "MacSlapApp",
     platforms: [.macOS(.v14)],
     targets: [
+        // Pure signal processing, no AppKit/IOKit — unit tested.
+        .target(
+            name: "SlapCore",
+            path: "Sources/SlapCore"
+        ),
         .executableTarget(
-            name: "SlapMacClone",
-            path: "Sources",
+            name: "MacSlapApp",
+            dependencies: ["SlapCore"],
+            path: "Sources/MacSlapApp",
+            swiftSettings: [
+                // AppKit/IOKit callback code predates strict concurrency; UI types
+                // are annotated @MainActor explicitly instead.
+                .swiftLanguageMode(.v5),
+            ],
             linkerSettings: [
                 .linkedFramework("IOKit"),
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("AppKit"),
                 .linkedFramework("CoreGraphics"),
-                .unsafeFlags([
-                    "-F/System/Library/PrivateFrameworks",
-                    "-framework", "MultitouchSupport",
-                ]),
+                .linkedFramework("QuartzCore"),
+                .linkedFramework("ScreenCaptureKit"),
+                .linkedFramework("ServiceManagement"),
             ]
-        )
+        ),
+        .testTarget(
+            name: "SlapCoreTests",
+            dependencies: ["SlapCore"],
+            path: "Tests/SlapCoreTests"
+        ),
     ]
 )

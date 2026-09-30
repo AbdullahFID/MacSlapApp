@@ -1,263 +1,236 @@
-# SlapMacPro
+# MacSlapApp
 
-Slap your MacBook and it screams back. Open-source, free, no license required.
+Slap your MacBook and it screams back. Free, open source, no license keys.
 
-Built by reverse-engineering [SlapMac](https://slapmac.com/) and studying [taigrr/spank](https://github.com/taigrr/spank), then rewriting from scratch in Swift with extra features using private macOS APIs.
+Built by reverse-engineering [SlapMac](https://slapmac.com/) and studying [taigrr/spank](https://github.com/taigrr/spank), then rewritten from scratch in Swift with extra features on top: trackpad haptics, screen shake, backlight flashes, combo announcers, and a USB moaner.
+
+Website: [macslap.app](https://macslap.app)
 
 ## Quick Start
 
-```bash
-# 1. Clone the repo
-git clone https://github.com/AbdullahFID/SlapMacPro.git
-cd SlapMacPro
-
-# 2. Build, install, and launch at login (one command)
-make install
-```
-
-> **Not comfortable with git?** Just click the green **Code** button on GitHub → **Download ZIP**, unzip it, open Terminal, `cd` into the unzipped folder, and run `make install`.
-
-### Pre-built Binary (no Xcode needed)
-
-Download the latest release from the [Releases](../../releases) page. Unzip it and run:
+**Download (no Xcode needed):** grab the latest zip from [Releases](../../releases), unzip it, and run:
 
 ```bash
-cd SlapMacPro-release
+cd MacSlapApp-v3.0.0
 ./install.sh
 ```
 
-This copies the pre-built binary, sets up launch at login, and starts the app. No Xcode or Swift toolchain required.
-
-That's it. A hand emoji (👋) appears in your menu bar. It starts automatically every time you log in. Slap your MacBook.
-
-If you just want to run it without installing:
+**Build from source:**
 
 ```bash
-swift build -c release
-codesign --force --sign - .build/release/SlapMacClone
-.build/release/SlapMacClone
+git clone https://github.com/AbdullahFID/MacSlapApp.git
+cd MacSlapApp
+make install
 ```
 
-## Setup
+> **Not comfortable with git?** Click the green **Code** button → **Download ZIP**, unzip it, open Terminal, drag the folder into the Terminal window to `cd` into it, and run `make install`.
 
-### Requirements
+Either way, `MacSlapApp.app` lands in `/Applications`, adds itself to Login Items, and a 👋 appears in your menu bar. Slap your MacBook.
 
-- macOS 14.6+ (Sonoma or newer)
-- Apple Silicon MacBook (M1 / M2 / M3 / M4 / M5)
-- Xcode Command Line Tools (`xcode-select --install`)
+It works immediately with the built-in **Robot Voice** pack — no sound files required. Add your own sounds for the other packs (see [Sounds](#sounds)).
 
-### Permissions
+## Requirements
 
-The app reads your MacBook's built-in accelerometer via IOKit HID. macOS may require:
+- An Apple Silicon **MacBook** (M1 Pro and M2 or later — desktops have no accelerometer)
+- macOS 14 Sonoma or newer. Tested on macOS 27 Golden Gate (M5 MacBook Pro).
+- To build from source: Xcode 16 or newer (Swift 6 toolchain)
 
-1. **Input Monitoring** — Go to System Settings > Privacy & Security > Input Monitoring and add your Terminal app (Terminal.app, iTerm2, etc.)
-2. If that doesn't work, try running with `sudo` once to bootstrap permissions
+## What's New in 3.0
 
-### Sound Files
+- **Built for macOS 27.** Ships as a real `.app` bundle with an icon, which macOS 26.1+ requires for Screen Recording permission, and uses `SMAppService` for Launch at Login instead of a hand-written LaunchAgent (macOS 27's launchd refuses quarantined agent plists).
+- **Works out of the box.** New built-in packs — Robot Voice (talks back with the system voice, angrier the harder you slap) and macOS Sounds — so a fresh install is never silent.
+- **Real trackpad haptics.** Drives the Taptic Engine directly, so you feel the slap even with no finger on the trackpad (the old API only buzzed while you were touching it).
+- **Sturdier sensor.** Recovers automatically if the accelerometer stops streaming (sleep/wake, SPU resets), wakes only the accelerometer instead of every sensor, and adapts detection timing to the sensor's real sample rate.
+- **Fixed combo announcer.** Each combo tier now plays its own clip (`2_*` on a 2-hit combo, `9_*` at nine) instead of walking a flat list.
+- **Screen shake rebuilt** on ScreenCaptureKit with GPU animation. It now shakes side to side (the old one only moved vertically) and never flashes a wallpaper-only capture when permission is missing.
+- **New menu:** live sensor status, today's count and hardest slap, Snooze, Test Slap, sounds-folder shortcuts, pack file counts, Launch at Login toggle, update notifications.
+- **Upgrading from 2.x (SlapMacPro)** is automatic: your settings and slap count carry over, and the old LaunchAgent is removed so two copies never run at once.
 
-You need `.mp3` or `.wav` sound files in `~/Desktop/slapmac/audio/`. Name them with these prefixes:
+## Sounds
+
+Sound files are matched by filename prefix:
 
 | Prefix | Voice Pack |
 |--------|-----------|
-| `sexy_` | Sexy |
+| `sexy_` | Sexy (escalates with sustained slapping) |
 | `punch_` | Combo Hit |
 | `male_` | Male |
 | `fart_` | Fart |
 | `gentleman_` | Gentleman |
-| `yamete_` | Yamete |
+| `yamete_` | Yamete (escalates) |
 | `goat_` | Goat |
-| `1_` through `9_` | Combo announcer clips |
+| `1_` … `9_` | Combo announcer, one tier per number |
 
-Example: `sexy_01.mp3`, `punch_05.mp3`, `goat_3.mp3`
+Examples: `sexy_01.mp3`, `punch_5.wav`, `goat_scream.m4a`, `3_1.mp3`. Supported formats: mp3, wav, m4a, aac, aiff, caf.
 
-You can use any sounds you want — record your own, grab free sound effects, whatever. Just drop them in the folder with the right prefix and restart the app.
+Where MacSlapApp looks, in order:
 
-**Using SlapMac's sound files:** If you download [SlapMac](https://slapmac.com/), you can copy their 130+ sound files from the app bundle for personal use WITHOUT PAYING:
+1. A folder you pick with **Voice Pack → Choose Sounds Folder…**
+2. `~/Library/Application Support/MacSlapApp/Sounds` (**Voice Pack → Open Sounds Folder**)
+3. `~/Desktop/slapmac/audio` (where 2.x kept them — still read)
 
-```bash
-mkdir -p ~/Desktop/slapmac/audio
-cp /Applications/slapmac.app/Contents/Resources/*.mp3 ~/Desktop/slapmac/audio/
-cp /Applications/slapmac.app/Contents/Resources/*.wav ~/Desktop/slapmac/audio/
-```
+After adding files, use **Voice Pack → Reload Sounds**. The Voice Pack menu shows how many files each pack found. If the selected pack has none, Robot Voice fills in until you add some.
 
-> **Note:** SlapMac's audio files are copyrighted by tonnoz. You may use them locally for personal use if you own the app, but do not redistribute them.
+Record your own, grab free sound effects, whatever you like.
 
-### Install with Launch at Login
+**Using SlapMac's sounds:** if you own [SlapMac](https://slapmac.com/), you can copy its 130+ sound files for personal use:
 
 ```bash
-make install
+mkdir -p ~/Library/Application\ Support/MacSlapApp/Sounds
+cp /Applications/slapmac.app/Contents/Resources/*.{mp3,wav} ~/Library/Application\ Support/MacSlapApp/Sounds/
 ```
 
-This will:
-- Build a release binary
-- Copy it to `~/Desktop/slapmac/bin/SlapMacPro`
-- Create a LaunchAgent (`~/Library/LaunchAgents/com.slapmacpro.plist`) so it starts automatically at login
-- Launch it immediately
+> SlapMac's audio files are copyrighted by tonnoz. Use them locally only, and don't redistribute them.
 
-No `.app` bundle needed — it uses a standard macOS LaunchAgent which works with any binary.
+## Menu
 
-### Managing Launch at Login
-
-```bash
-# Disable auto-start (keeps installed, just won't launch at login)
-make disable
-
-# Re-enable auto-start
-make enable
-
-# Manually stop the running app
-launchctl unload ~/Library/LaunchAgents/com.slapmacpro.plist
-
-# Manually start it
-launchctl load ~/Library/LaunchAgents/com.slapmacpro.plist
-```
-
-### Uninstall
-
-```bash
-make uninstall
-```
-
-Removes the binary, LaunchAgent, and stops the app completely.
-
-### Other Commands
-
-```bash
-# Build debug
-swift build
-
-# Build release
-make build
-
-# Run without installing (debug, with console output)
-swift build && .build/debug/SlapMacClone 2>&1
-
-# View live detection logs
-tail -f /tmp/slapmacpro.log
-```
-
-## Features
-
-- **5-algorithm slap detection** — High-Pass Filter, STA/LTA (3 timescales), CUSUM, Kurtosis, Peak/MAD. They vote. Democracy, but for physical abuse.
-- **7 voice packs** — Sexy, Combo Hit, Male, Fart, Gentleman, Yamete, Goat
-- **Dynamic volume** — Logarithmic scaling: gentle taps whisper, hard slaps scream
-- **Escalation tracking** — Keep slapping and sounds escalate with a 30s decay half-life
-- **Screen Shake** — Captures your screen and shakes it on impact
-- **Brightness Flash** — DisplayServices private API dims/flashes the actual hardware backlight
-- **Trackpad Haptic Feedback** — Trackpad buzzes on impact
-- **Screen Flash** — White overlay flash (AppKit)
-- **USB Moaner** — Plug/unplug USB data devices and it reacts
-- **Intensity sliders** — Per-effect intensity control from the menu bar
-- **Menu bar app** — No dock icon, lives in your menu bar with full controls
-- **Launch at login** — Via LaunchAgent, no .app bundle needed
-- **Combo system** — Combo Hit pack has an announcer that calls out your combo tier
-
-## Menu Bar Controls
-
-Click the 👋 in your menu bar to access:
+Click the 👋 in your menu bar (it flashes 💥 on every slap and shows 💤 while paused):
 
 ```
- Enabled / Disabled
- Voice Pack          → Sexy, Combo Hit, Male, Fart, Gentleman, Yamete, Goat
- Sensitivity         → Extremely Sensitive ... Requires Significant Force
- Cooldown            → None, Fast, Medium, Slow, Very Slow
- Dynamic Volume      → on/off
-
- Effects
- Screen Flash        → on/off + intensity slider
- Screen Shake        → on/off + intensity slider
- Brightness Flash    → on/off + intensity slider
- Trackpad Haptic     → on/off + intensity slider
- USB Moaner          → on/off
-
- Volume              → master slider
- Reset Slap Count
- Quit
+ Sensor: Live (805 Hz)
+ Slaps: 1,234  ·  Today: 12  ·  Hardest: 3.2 g
+ ─────────
+ Enabled
+ Snooze                 → 15 minutes, 1 hour, until tomorrow
+ ─────────
+ SOUND
+ Voice Pack: Sexy       → packs (with file counts), built-in packs, sounds folder actions
+   Volume 80%  ━━━━━●━━
+ Dynamic Volume
+ Sensitivity: Medium    → Extremely Sensitive … Requires Significant Force
+ Cooldown: Medium       → None … Very Slow
+ ─────────
+ EFFECTS
+ Trackpad Haptics       + intensity
+ Screen Flash           + intensity
+ Screen Shake           + intensity (needs Screen Recording)
+ Brightness Flash       + intensity
+ USB Moaner
+ ─────────
+ Test Slap              ⌘T
+ ─────────
+ Show Count in Menu Bar
+ Launch at Login
+ Reset Stats…
+ ─────────
+ Check for Updates…
+ Help                   → website, GitHub, log file
+ About MacSlapApp
+ Quit MacSlapApp        ⌘Q
 ```
 
-All settings persist automatically between launches.
+Everything persists between launches. **Test Slap** fires every enabled effect so you can tune them without abusing your laptop.
 
-## Architecture
+## Permissions
 
-```
-MenuBarExtra (SwiftUI)
-  └─ SlapController
-       ├─ AccelerometerReader   ← IOKit HID, AppleSPUHIDDevice, ~125Hz
-       ├─ SlapDetector          ← 5 algorithms vote on impact
-       │    ├─ HighPassFilter   ← strips gravity (1st order IIR)
-       │    ├─ STALTADetector   ← seismology algorithm (3 timescales)
-       │    ├─ CUSUMDetector    ← cumulative sum change detection
-       │    ├─ KurtosisDetector ← 4th statistical moment spike detection
-       │    └─ PeakMADDetector  ← median absolute deviation outlier detection
-       ├─ AudioPlayer           ← AVFoundation, escalation tracking
-       ├─ ScreenShaker          ← CGDisplayCreateImage + overlay shake
-       ├─ BrightnessFlash       ← DisplayServices private API
-       ├─ HapticFeedback        ← NSHapticFeedbackManager
-       ├─ ScreenFlash           ← AppKit NSPanel overlay
-       ├─ USBMonitor            ← IOKit notifications + polling
-       └─ SettingsStore         ← UserDefaults persistence
-```
+- **Slap detection, sounds, haptics, brightness, USB:** no permissions needed.
+- **Screen Shake:** needs Screen Recording (it captures the screen to shake it). Turning it on asks once; if macOS doesn't prompt, use **Allow Screen Recording…** in the menu and add MacSlapApp under System Settings → Privacy & Security → Screen & System Audio Recording.
 
-## How the Detection Works
+## How Detection Works
 
-Your MacBook has a **Bosch BMI286 IMU** (Inertial Measurement Unit) running at 1kHz through Apple's Sensor Processing Unit (`AppleSPUHIDDevice`). The raw reports are 22 bytes with 3-axis acceleration as int32 Q16 fixed-point values.
+Your MacBook has a **Bosch BMI286 IMU** behind Apple's Sensor Processing Unit (`AppleSPUHIDDevice`, vendor usage page `0xFF00`, usage 3). MacSlapApp wakes it through its `AppleSPUHIDDriver`, then reads 22-byte reports with X/Y/Z as int32 Q16 fixed-point at about 805 Hz, on a dedicated thread so menus and animations never drop a sample.
 
-We decimate to ~125Hz, strip gravity with a high-pass filter, then run the magnitude through five concurrent detectors:
+Each sample goes through a single-pass impact detector tuned from real captures on an M5:
 
-1. **STA/LTA** — Short-Term Average / Long-Term Average ratio at 3 timescales (fast/medium/slow). Classic earthquake detection algorithm borrowed from seismology.
-2. **CUSUM** — Cumulative Sum detects sustained shifts in mean acceleration.
-3. **Kurtosis** — Measures signal "peakedness". A sharp impact creates a heavy-tailed distribution with high excess kurtosis.
-4. **Peak/MAD** — Median Absolute Deviation outlier detection. More robust than standard deviation against baseline contamination.
+1. **Gravity removal:** a 0.5 s low-pass tracks gravity; subtracting it leaves linear acceleration.
+2. **Jerk:** how fast acceleration changes, summed across axes (g/s).
+3. **The gate:** a slap has high amplitude *and* high jerk at the same instant. Typing never does — its big moments are slow (the chassis rocking) and its sharp moments are tiny (key clicks). Very large hits pass on amplitude alone.
+4. **Adaptive noise floor:** the amplitude bar rises on a noisy desk and stays put during an impact.
+5. **Peak hold + refractory:** a 50 ms window captures true peak force, and a 140 ms lockout stops one slap's ringing from retriggering.
 
-The detectors **vote**. When enough agree, it classifies the event:
+All windows are in seconds and scale with the measured sample rate, so machines where the IMU runs slower still detect correctly.
 
-| Detectors | Amplitude | Classification |
-|-----------|-----------|---------------|
-| 4+ agree  | > 0.05g   | Major Shock   |
-| 3+ agree  | > 0.02g   | Medium Shock  |
-| Peak fires| > 0.005g  | Micro Shock   |
+| Sensitivity | Amplitude | Jerk | Big hit |
+|---|---|---|---|
+| Extremely Sensitive | 0.15 g | 14 g/s | 0.45 g |
+| High | 0.25 g | 20 g/s | 0.60 g |
+| Medium | 0.40 g | 30 g/s | 0.90 g |
+| Low | 0.70 g | 50 g/s | 1.50 g |
+| Requires Significant Force | 1.10 g | 90 g/s | 2.20 g |
 
-Volume scales with impact force using a logarithmic curve: `intensity = log(1 + t * 99) / log(100)`
+Loudness follows the peak force on a log curve, `intensity = log(1 + t·99) / log(100)`, so taps whisper and hard slaps scream.
 
 ## Private APIs Used
 
 | API | Framework | Purpose |
 |-----|-----------|---------|
-| `_CGSDefaultConnection` | CoreGraphics | Get WindowServer connection for screen capture |
-| `CGSSetWindowTransform` | CoreGraphics | Window affine transforms (screen shake) |
-| `DisplayServicesGetBrightness` | DisplayServices | Read hardware backlight level |
-| `DisplayServicesSetBrightness` | DisplayServices | Set hardware backlight level |
+| `AppleSPUHIDDevice` / `AppleSPUHIDDriver` | IOKit (undocumented service) | Accelerometer access and wake-up |
+| `DisplayServicesGetBrightness` / `SetBrightness` | DisplayServices | Backlight flash |
+| `MTActuatorCreateFromDeviceID` / `MTActuatorActuate` | MultitouchSupport | Taptic Engine haptics |
 
-These are loaded via `@_silgen_name` and `dlopen`/`dlsym`. They work on all Apple Silicon Macs without SIP changes.
+Private frameworks are loaded at runtime with `dlopen`, so if Apple moves one the app still launches and only that effect switches off. None of this needs SIP changes.
 
 ## Troubleshooting
 
-**"No accelerometer device found"**
-- Make sure you're on an Apple Silicon MacBook (not an iMac/Mac Mini/Mac Pro — they don't have accelerometers)
-- Grant Input Monitoring permission to your terminal app in System Settings > Privacy & Security > Input Monitoring
-- Try restarting your terminal after granting permissions
+Start with the first line of the menu (sensor status) and the log: **Help → Open Log File** (`~/Library/Logs/MacSlapApp/MacSlapApp.log`).
 
-**No sound plays**
-- Check that sound files exist in `~/Desktop/slapmac/audio/`
-- Check that they have the correct prefix (`sexy_`, `male_`, etc.)
-- Check your Mac's volume isn't muted
+**"Sensor: No motion sensor"**
+- You need an Apple Silicon MacBook. iMac, Mac mini, Mac Studio and Mac Pro don't have an accelerometer, and neither do base M1 machines.
 
-**Screen shake doesn't work**
-- Screen shake captures and overlays your screen. If you have very high resolution or multiple displays it might be subtle — crank the intensity slider up in the menu bar
+**"Sensor: Reconnecting…" that never goes Live**
+- Quit and reopen MacSlapApp. If it persists, the log says why the device couldn't be opened.
 
-**USB Moaner doesn't detect my device**
-- The device must enumerate as a USB data device in macOS. Charge-only cables or devices that don't present USB data won't trigger
-- Check with `system_profiler SPUSBDataType` — if your device doesn't show there, SlapMacPro can't see it either
+**"Apple could not verify MacSlapApp…" when opening**
+- Release builds are ad-hoc signed, not notarized. Run `./install.sh` from the zip (it clears the download quarantine), or open System Settings → Privacy & Security and click **Open Anyway**.
 
-**App doesn't start at login**
-- Run `make install` to set up the LaunchAgent
-- Check with `launchctl list | grep slapmacpro`
+**No sound**
+- Check which pack is selected and whether it shows a file count in the Voice Pack menu. Try **Test Slap**, and make sure your Mac isn't muted.
+
+**Screen Shake does nothing**
+- It needs Screen Recording permission (see [Permissions](#permissions)). After installing a new build you may need to toggle MacSlapApp off and on in that list, since the permission is tied to the app's signature.
+
+**Typing triggers it / slaps don't register**
+- Adjust **Sensitivity**. Medium is the default; "Requires Significant Force" only reacts to firm slaps.
+
+**USB Moaner doesn't react**
+- The device must show up as a USB data device (`system_profiler SPUSBDataType`). Charge-only cables won't trigger it.
+
+**Doesn't start at login**
+- Check **Launch at Login** in the menu. If it says *Needs Approval*, click it and allow MacSlapApp in System Settings → General → Login Items.
+
+## Uninstall
+
+```bash
+make uninstall
+```
+
+Or quit it from the menu and drag `/Applications/MacSlapApp.app` to the Trash. Your sounds (`~/Library/Application Support/MacSlapApp`) are kept.
+
+## Development
+
+```bash
+make app        # build dist/MacSlapApp.app
+make run        # build and run the bundle with logs in the terminal
+make test       # detector + version tests
+make release    # tests, then dist/MacSlapApp-vX.Y.Z.zip for GitHub Releases
+make icon       # regenerate Resources/AppIcon.icns
+```
+
+Bump `VERSION` in the `Makefile` when cutting a release; the update checker compares it with the latest GitHub release tag.
+
+```
+Sources/
+  SlapCore/                 pure Swift, unit tested
+    SlapDetector.swift      impact detector
+    Sensitivity.swift       sensitivity presets
+    VersionComparison.swift release tag comparison
+  MacSlapApp/
+    AppDelegate.swift       launch, 2.x migration, login item
+    MenuController.swift    menu bar UI
+    SlapController.swift    sensor → detector → reactions
+    AccelerometerReader.swift  IOKit SPU reader + watchdog
+    AudioPlayer.swift, SoundLibrary.swift, RobotVoice.swift
+    HapticFeedback.swift, ScreenShaker.swift, ScreenFlash.swift, BrightnessFlash.swift
+    USBMonitor.swift, UpdateChecker.swift, LoginItem.swift, SettingsStore.swift
+Tests/SlapCoreTests/        synthetic slap/typing signals
+probe/                      standalone sensor diagnostics
+```
 
 ## Credits
 
 - Inspired by [SlapMac](https://slapmac.com/) by tonnoz
-- Accelerometer approach from [taigrr/spank](https://github.com/taigrr/spank)
-- Detection algorithms based on seismological signal processing (STA/LTA, CUSUM, Kurtosis)
+- Accelerometer approach from [taigrr/spank](https://github.com/taigrr/spank) and [olvvier/apple-silicon-accelerometer](https://github.com/olvvier/apple-silicon-accelerometer)
+- Driver wake sequence debugging by [@godigi](https://github.com/godigi) ([#2](https://github.com/AbdullahFID/MacSlapApp/issues/2))
 
 ## License
 

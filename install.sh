@@ -1,45 +1,52 @@
 #!/bin/bash
-set -e
+# Installs MacSlapApp from a release zip: ./install.sh
+set -euo pipefail
 
-INSTALL_DIR="$HOME/Desktop/slapmac/bin"
-AUDIO_DIR="$HOME/Desktop/slapmac/audio"
-LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.slapmacpro.plist"
-BINARY="$INSTALL_DIR/SlapMacPro"
+APP_NAME="MacSlapApp"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SOURCE="$HERE/$APP_NAME.app"
 
-echo "Installing SlapMacPro..."
+if [ ! -d "$SOURCE" ]; then
+    echo "Couldn't find $APP_NAME.app next to this script ($HERE)." >&2
+    exit 1
+fi
 
-# Copy binary
-mkdir -p "$INSTALL_DIR"
-cp "$(dirname "$0")/SlapMacPro" "$BINARY"
-chmod +x "$BINARY"
-codesign --force --sign - "$BINARY" 2>/dev/null || true
+if [ -w /Applications ]; then
+    DEST_DIR="/Applications"
+else
+    DEST_DIR="$HOME/Applications"
+    mkdir -p "$DEST_DIR"
+fi
+DEST="$DEST_DIR/$APP_NAME.app"
 
-# Create audio dir
-mkdir -p "$AUDIO_DIR"
+echo "Installing $APP_NAME to $DEST_DIR..."
 
-# Create LaunchAgent
-cat > "$LAUNCH_AGENT" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>com.slapmacpro</string>
-  <key>ProgramArguments</key><array><string>$BINARY</string></array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><false/>
-  <key>StandardErrorPath</key><string>/tmp/slapmacpro.log</string>
-</dict></plist>
-EOF
+pkill -x "$APP_NAME" 2>/dev/null || true
 
-# Load and launch
-launchctl load "$LAUNCH_AGENT" 2>/dev/null || true
+# Clean up 2.x (SlapMacPro), which ran a bare binary from a LaunchAgent.
+launchctl bootout "gui/$(id -u)/com.slapmacpro" 2>/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/com.slapmacpro.plist" "$HOME/Desktop/slapmac/bin/SlapMacPro"
+pkill -x SlapMacPro 2>/dev/null || true
+
+rm -rf "$DEST"
+ditto "$SOURCE" "$DEST"
+
+# Downloaded files are quarantined, and this build is ad-hoc signed rather
+# than notarized, so Gatekeeper would otherwise refuse to open it.
+xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
+
+SOUNDS="$HOME/Library/Application Support/$APP_NAME/Sounds"
+mkdir -p "$SOUNDS"
+
+open "$DEST"
 
 echo ""
-echo "SlapMacPro installed!"
-echo "  Binary: $BINARY"
-echo "  Launches at login: Yes"
-echo "  Logs: tail -f /tmp/slapmacpro.log"
+echo "$APP_NAME is running — look for the hand in your menu bar."
+echo "  App:        $DEST"
+echo "  Sounds:     $SOUNDS"
+echo "  Logs:       ~/Library/Logs/$APP_NAME/$APP_NAME.log"
 echo ""
-echo "Drop your sound files (.mp3/.wav) into: $AUDIO_DIR"
-echo "See README.md for file naming conventions."
+echo "It works right away with the built-in Robot Voice pack. Drop .mp3/.wav files"
+echo "named like sexy_01.mp3 or punch_3.wav into the Sounds folder for the other packs."
 echo ""
-echo "To uninstall: launchctl unload $LAUNCH_AGENT && rm -rf $INSTALL_DIR $LAUNCH_AGENT"
+echo "To uninstall: quit it from the menu, then delete $DEST"
