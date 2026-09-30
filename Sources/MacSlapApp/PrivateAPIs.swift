@@ -39,7 +39,7 @@ enum DisplayServicesAPI {
         var count: UInt32 = 0
         guard CGGetOnlineDisplayList(UInt32(ids.count), &ids, &count) == .success else { return nil }
         let online = ids.prefix(Int(count))
-        let candidate = online.first { CGDisplayIsBuiltin($0) != 0 } ?? CGMainDisplayID()
+        let candidate: CGDirectDisplayID = online.first { CGDisplayIsBuiltin($0) != 0 } ?? CGMainDisplayID()
         if let canChange = canChangeBrightness, !canChange(candidate) { return nil }
         return candidate
     }
