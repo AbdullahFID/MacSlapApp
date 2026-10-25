@@ -33,6 +33,11 @@ final class AudioPlayer {
         self.library = library
     }
 
+    var isPlaying: Bool {
+        robot.isSpeaking || players.contains(where: { $0.isPlaying })
+            || announcerTiers.joined().contains(where: { $0.isPlaying })
+    }
+
     var isUsingFallback: Bool { activePack != selectedPack }
 
     func load(pack: VoicePack) {

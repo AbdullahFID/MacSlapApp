@@ -24,6 +24,8 @@ final class RobotVoice {
 
     static var phraseCount: Int { light.count + medium.count + hard.count + spamming.count }
 
+    var isSpeaking: Bool { synthesizer.isSpeaking }
+
     private let synthesizer = AVSpeechSynthesizer()
     private let voice = AVSpeechSynthesisVoice(language: Locale.preferredLanguages.first ?? "en-US")
         ?? AVSpeechSynthesisVoice(language: "en-US")

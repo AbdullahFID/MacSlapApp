@@ -1,6 +1,18 @@
 import Foundation
 import SlapCore
 
+enum DetectionSource: String, CaseIterable {
+    case automatic, microphone, accelerometer
+
+    var displayName: String {
+        switch self {
+        case .automatic: return "Automatic"
+        case .microphone: return "Microphone"
+        case .accelerometer: return "Motion Sensor"
+        }
+    }
+}
+
 enum CooldownOption: Double, CaseIterable {
     case none = 0.0
     case fast = 0.35
@@ -49,6 +61,9 @@ enum SnoozeOption: CaseIterable {
 final class SettingsStore {
     private let defaults: UserDefaults
 
+    var detectionSource: DetectionSource {
+        didSet { defaults.set(detectionSource.rawValue, forKey: "detectionSource") }
+    }
     var isEnabled: Bool { didSet { defaults.set(isEnabled, forKey: Key.isEnabled) } }
     var voicePack: VoicePack { didSet { defaults.set(voicePack.rawValue, forKey: Key.voicePack) } }
     var sensitivity: SensitivityLevel { didSet { defaults.set(sensitivity.rawValue, forKey: Key.sensitivity) } }
@@ -88,6 +103,7 @@ final class SettingsStore {
         Self.migrateLegacyDomains(into: defaults)
 
         let d = defaults
+        detectionSource = DetectionSource(rawValue: d.string(forKey: "detectionSource") ?? "") ?? .automatic
         isEnabled = d.object(forKey: Key.isEnabled) as? Bool ?? true
         voicePack = VoicePack(rawValue: d.string(forKey: Key.voicePack) ?? "") ?? .sexy
         sensitivity = SensitivityLevel(rawValue: d.object(forKey: Key.sensitivity) as? Int ?? -1) ?? .medium

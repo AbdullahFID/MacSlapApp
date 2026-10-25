@@ -37,6 +37,14 @@ enum SensorStatus: Equatable {
 ///   - Bytes 14-17: Z axis
 @MainActor
 final class AccelerometerReader {
+    static var isAvailable: Bool {
+        if case .success(let service) = findAccelerometerService() {
+            IOObjectRelease(service)
+            return true
+        }
+        return false
+    }
+
     private static let targetUsagePage = 0xFF00  // Apple vendor page
     private static let targetUsage = 3           // Accelerometer
 

@@ -69,7 +69,21 @@ final class MenuController: NSObject, NSMenuDelegate {
             menu.addItem(.separator())
         }
 
-        menu.addItem(info(controller.accelerometer.status.menuDescription))
+        menu.addItem(info(controller.detectionStatus))
+        let sources = NSMenu()
+        for source in DetectionSource.allCases {
+            let item = toggle(source.displayName, settings.detectionSource == source,
+                              #selector(selectDetectionSource(_:)))
+            item.representedObject = source.rawValue
+            sources.addItem(item)
+        }
+        menu.addItem(submenu("Detection: \(settings.detectionSource.displayName)", sources))
+        if controller.usesMicrophone {
+            menu.addItem(info("Experimental: other loud sounds may trigger taps"))
+            menu.addItem(info("Tap sounds stay on this Mac; no recordings saved"))
+            menu.addItem(action("Microphone Settings…", #selector(openMicrophoneSettings)))
+            menu.addItem(action("Retry Microphone", #selector(retryMicrophone)))
+        }
         menu.addItem(info(statsLine()))
         menu.addItem(.separator())
 
@@ -109,7 +123,7 @@ final class MenuController: NSObject, NSMenuDelegate {
     private func statsLine() -> String {
         let hardest = settings.hardestSlap > 0 ? String(format: "%.1f g", settings.hardestSlap) : "—"
         return "Slaps: \(settings.totalSlapCount.formatted())  ·  Today: \(settings.todayCount.formatted())"
-            + "  ·  Hardest: \(hardest)"
+            + (controller.usesMicrophone ? "" : "  ·  Hardest: \(hardest)")
     }
 
     private func snoozeItem() -> NSMenuItem {
@@ -165,11 +179,14 @@ final class MenuController: NSObject, NSMenuDelegate {
 
         let sensitivity = NSMenu()
         for level in SensitivityLevel.allCases.reversed() {
-            let item = toggle(level.displayName, settings.sensitivity == level, #selector(selectSensitivity(_:)))
+            let name = controller.usesMicrophone && level == .veryLow ? "Very Low" : level.displayName
+            let item = toggle(name, settings.sensitivity == level, #selector(selectSensitivity(_:)))
             item.tag = level.rawValue
             sensitivity.addItem(item)
         }
-        menu.addItem(submenu("Sensitivity: \(settings.sensitivity.displayName)", sensitivity))
+        let sensitivityName = controller.usesMicrophone && settings.sensitivity == .veryLow
+            ? "Very Low" : settings.sensitivity.displayName
+        menu.addItem(submenu("Sensitivity: \(sensitivityName)", sensitivity))
 
         let cooldown = NSMenu()
         let currentCooldown = CooldownOption(rawValue: settings.cooldownInterval)
@@ -301,6 +318,20 @@ final class MenuController: NSObject, NSMenuDelegate {
     }
 
     // MARK: - Actions
+
+    @objc private func selectDetectionSource(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let source = DetectionSource(rawValue: raw) else { return }
+        controller.selectDetectionSource(source)
+    }
+
+    @objc private func openMicrophoneSettings() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+    }
+
+    @objc private func retryMicrophone() {
+        controller.selectDetectionSource(settings.detectionSource)
+    }
 
     @objc private func toggleEnabled() {
         controller.setEnabled(!settings.isEnabled)

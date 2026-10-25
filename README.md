@@ -31,9 +31,62 @@ It works immediately with the built-in **Robot Voice** pack — no sound files r
 
 ## Requirements
 
-- An Apple Silicon **MacBook** (M1 Pro and M2 or later — desktops have no accelerometer)
+- **Motion detection:** a compatible Apple Silicon MacBook (M1 Pro and M2 or later).
+- **Microphone detection:** a Mac with a working audio input, including base M1 MacBooks and Macs without a compatible motion sensor. Other models are intended to work through standard macOS audio input, but are not individually verified.
 - macOS 14 Sonoma or newer. Tested on macOS 27 Golden Gate (M5 MacBook Pro).
 - To build from source: Xcode 16 or newer (Swift 6 toolchain)
+
+## Microphone detection (base M1 and other Macs)
+
+**Automatic** detection uses the compatible motion sensor when present; when no
+sensor is found it uses the default microphone. You can also choose
+**Detection → Microphone** or **Motion Sensor** from the 👋 menu. Sensor errors
+on a Mac with compatible hardware do not silently switch to the microphone.
+The selected source is remembered between launches.
+
+### Setup
+
+1. Run the `.app` bundle, rather than the bare `swift build` executable. To try
+   this change from source, run `make app` and open `dist/MacSlapApp.app`.
+2. Allow microphone access when macOS asks. Motion mode does not request it.
+3. In **System Settings → Sound → Input**, select your preferred input. A
+   MacBook's built-in microphone is generally a better starting point for
+   chassis taps than a headset or a distant external microphone.
+4. Select **Detection → Microphone** or leave **Automatic** selected on a Mac
+   without a motion sensor. The status line should say **Microphone: Listening**.
+5. Keep the room quiet for about a second while the detector settles, then try
+   a light tap on the palm rest. Adjust **Sensitivity** and **Cooldown** as needed.
+   **Test Slap** checks the existing sounds and effects without microphone input.
+
+If access was denied, open **Microphone Settings…**, enable MacSlapApp under
+**Privacy & Security → Microphone**, then choose **Retry Microphone** or restart
+the app. Retry also lets you reconnect an input after changing Sound settings.
+Capture restarts after sleep/wake or an audio configuration change that stops
+the engine. Turning **Enabled** off or using **Snooze** stops microphone capture;
+it resumes when re-enabled or when snoozing expires.
+
+### Privacy and limitations
+
+- Microphone mode is an **experimental acoustic heuristic**. It measures sudden
+  changes in audio amplitude, not physical motion or slap force. Quiet taps may
+  be missed; typing, claps, speech or music can cause false triggers. Input gain,
+  placement, noise suppression and room noise affect results.
+- Raw microphone samples are processed in memory on this Mac. They are not saved,
+  transcribed or uploaded. Only amplitude measurements reach the detector; logs
+  contain status and detected-event information, not recordings. macOS may show
+  its microphone privacy indicator while detection is active.
+- Detection is suppressed while the app plays its own sounds and briefly after
+  playback/effects to reduce feedback. Taps during those windows are ignored,
+  even when the user cooldown is set to None.
+- Microphone events increment slap counts, but do not report acceleration in g
+  or update the hardest-motion reading. Existing voice packs and available
+  effects are shared by both detection sources; an input microphone does not
+  add hardware features such as trackpad haptics to other Macs.
+- Automated tests cover synthetic amplitude signals. A successful build or test
+  run does not establish real tap accuracy or compatibility with every Mac and
+  microphone. Physical detection still needs testing with your input and room.
+- Use gentle taps or **Test Slap**. Do not strike the display or use enough force
+  to damage the computer; this entertainment feature cannot prevent damage.
 
 ## What's New in 3.0
 
@@ -88,6 +141,7 @@ Click the 👋 in your menu bar (it flashes 💥 on every slap and shows 💤 wh
 
 ```
  Sensor: Live (805 Hz)
+ Detection: Automatic           → Automatic, Microphone, Motion Sensor
  Slaps: 1,234  ·  Today: 12  ·  Hardest: 3.2 g
  ─────────
  Enabled
@@ -123,12 +177,13 @@ Everything persists between launches. **Test Slap** fires every enabled effect s
 
 ## Permissions
 
-- **Slap detection, sounds, haptics, brightness, USB:** no permissions needed.
+- **Microphone detection:** requires Microphone permission (see [setup and privacy](#microphone-detection-base-m1-and-other-macs)).
+- **Motion detection, sounds, haptics, brightness, USB:** no permissions needed.
 - **Screen Shake:** needs Screen Recording (it captures the screen to shake it). Turning it on asks once; if macOS doesn't prompt, use **Allow Screen Recording…** in the menu and add MacSlapApp under System Settings → Privacy & Security → Screen & System Audio Recording.
 
 ## How Detection Works
 
-Your MacBook has a **Bosch BMI286 IMU** behind Apple's Sensor Processing Unit (`AppleSPUHIDDevice`, vendor usage page `0xFF00`, usage 3). MacSlapApp wakes it through its `AppleSPUHIDDriver`, then reads 22-byte reports with X/Y/Z as int32 Q16 fixed-point at about 805 Hz, on a dedicated thread so menus and animations never drop a sample.
+In motion-sensor mode, compatible MacBooks expose a **Bosch BMI286 IMU** behind Apple's Sensor Processing Unit (`AppleSPUHIDDevice`, vendor usage page `0xFF00`, usage 3). MacSlapApp wakes it through its `AppleSPUHIDDriver`, then reads 22-byte reports with X/Y/Z as int32 Q16 fixed-point at about 805 Hz, on a dedicated thread so menus and animations never drop a sample.
 
 Each sample goes through a single-pass impact detector tuned from real captures on an M5:
 
@@ -165,7 +220,7 @@ Private frameworks are loaded at runtime with `dlopen`, so if Apple moves one th
 Start with the first line of the menu (sensor status) and the log: **Help → Open Log File** (`~/Library/Logs/MacSlapApp/MacSlapApp.log`).
 
 **"Sensor: No motion sensor"**
-- You need an Apple Silicon MacBook. iMac, Mac mini, Mac Studio and Mac Pro don't have an accelerometer, and neither do base M1 machines.
+- For base M1 Macs, desktops and other Macs without a compatible motion sensor, select **Detection → Automatic** or **Microphone** and allow microphone access. See [microphone setup](#microphone-detection-base-m1-and-other-macs).
 
 **"Sensor: Reconnecting…" that never goes Live**
 - Quit and reopen MacSlapApp. If it persists, the log says why the device couldn't be opened.
